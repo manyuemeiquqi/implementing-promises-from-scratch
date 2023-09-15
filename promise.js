@@ -7,8 +7,7 @@ class APromise {
   constructor(fn) {
     this.value = undefined
     this.state = PENDING
-    this.resolveCallbacks = []
-    this.rejectCallbacks = []
+    this.callBackQueue = []
     try {
       fn(this.resolve.bind(this), this.reject.bind(this))
     }
@@ -16,65 +15,118 @@ class APromise {
       this.reject(e)
     }
   }
-
+  executeQueue() {
+    const len = this.callBackQueue.length
+    for (let i = 0; i < len; i++) {
+      const { onFulfilled, onRejected } = this.callBackQueue[i]
+      this.then(onFulfilled,
+        onRejected)
+    }
+  }
   resolve(value) {
-    setTimeout(() => {
+
+
+    if (this.state === PENDING) {
+      if (value === this) {
+        return this.reject(new TypeError('failed'))
+      }
+      if (value && (typeof value === 'object' || typeof value === 'function')) {
+        let then
+        try {
+          then = value.then
+        } catch (err) {
+          return this.reject(err)
+        }
+
+        // promise
+        if (then === this.then && this instanceof APromise) {
+          this.state = FULFILLED
+          this.value = value
+          return this.executeQueue()
+        }
+
+        // thenable
+        if (typeof then === 'function') {
+          return this.then(then.bind(this))
+        }
+      }
+
       this.state = FULFILLED
       this.value = value
       // 如果 resolve是异步的的，那么cb就需要rsolve出发
 
       // finale要干的事情，如果队列中有任务要执行
-      this.resolveCallbacks.forEach(cb => cb(value))
-    },);
-
+      this.executeQueue()
+    }
   }
   reject(reason) {
-    setTimeout(() => {
+    if (this.state === PENDING) {
       this.state = REJECTED
       this.value = reason
-      this.rejectCallbacks.forEach(cb => cb(reason))
-    },);
-
+      this.executeQueue()
+    }
   }
 
 
   then(onFulfilled, onRejected) {
-
-    onFulfilled = typeof onFulfilled === 'function' ? onFulfilled : () => { }
-    onRejected = typeof onRejected === 'function' ? onRejected : () => { }
-    if (this.state === PENDING) {
-      this.resolveCallbacks.push(onFulfilled)
-      this.rejectCallbacks.push(onRejected)
+    const promiseThen = new APromise(() => { })
+    let that = this
+    while (that.value instanceof APromise && that.state !== REJECTED) {
+      that = that.value
     }
-    if (this.state === FULFILLED) {
+
+
+    if (that.state === PENDING) {
+      that.callBackQueue.push({
+        onFulfilled,
+        onRejected
+
+      })
+    }
+    if (that.state === FULFILLED) {
       // 这里就是异步的精髓 为什么不是异步 resovle 二十esolve onfulfilled
       setTimeout(() => {
-        onFulfilled(this.value)
-      },);
+        if (typeof onFulfilled !== 'function') {
+          promiseThen.resolve(that.value)
+        }
+        else {
+          try {
+            const ret = onFulfilled(that.value)
+            promiseThen.resolve(ret)
+          } catch (err) {
+            promiseThen.reject(err)
+          }
+        }
+      },0);
     }
-    if (this.state === onRejected) {
+    if (that.state === REJECTED) {
       setTimeout(() => {
-        onRejected(this.value)
-
-      },);
+        if (typeof onRejected !== 'function') {
+          promiseThen.reject(that.value)
+          return
+        }
+        else {
+          try {
+            const ret = onRejected(that.value)
+            promiseThen.resolve(ret)
+          } catch (err) {
+            promiseThen.reject(err)
+          }
+        }
+      },0);
     }
-    return this
+    return promiseThen
   }
 }
-new APromise((resolve) => {
-  console.log('2');
-  setTimeout(() => {
-    resolve(3)
-    console.log('7');
 
-  })
-  //   setTimeout(()=)
-}).then(res => {
-  console.log(res);
-}).then(res => {
-  console.log('res: ', res);
 
-})
-console.log(5);
+function callbackAggregator(times, ultimateCallback) {
+  var soFar = 0;
+  return function () {
+      if (++soFar === times) {
+          ultimateCallback();
+      }
+  };
+}
 
 module.exports = APromise
