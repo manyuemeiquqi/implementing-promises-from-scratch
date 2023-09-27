@@ -1,49 +1,49 @@
 // 先定义三个常量表示状态
-var PENDING = 'pending';
-var FULFILLED = 'fulfilled';
-var REJECTED = 'rejected';
+var PENDING = "pending";
+var FULFILLED = "fulfilled";
+var REJECTED = "rejected";
 
 function MyPromise(fn) {
-  this.status = PENDING;    // 初始状态为pending
-  this.value = null;        // 初始化value
-  this.reason = null;       // 初始化reason
+  this.status = PENDING; // 初始状态为pending
+  this.value = null; // 初始化value
 
   // 构造函数里面添加两个数组存储成功和失败的回调
-  this.onFulfilledCallbacks = [];
-  this.onRejectedCallbacks = [];
+  this.callbackQueue = [];
+
+  // this.onFulfilledCallbacks = [];
+  // this.onRejectedCallbacks = [];
 
   // 存一下this,以便resolve和reject里面访问
-  var that = this;
   // resolve方法参数是value
-  function resolve(value) {
-    if (that.status === PENDING) {
-      that.status = FULFILLED;
-      that.value = value;
+  this.resolve = function (value) {
+    if (this.status === PENDING) {
+      this.status = FULFILLED;
+      this.value = value;
 
       // resolve里面将所有成功的回调拿出来执行
-      that.onFulfilledCallbacks.forEach(callback => {
-        callback(that.value);
+      this.callbackQueue.forEach(({ onFulfilled }) => {
+        onFulfilled(this.value);
       });
     }
-  }
+  };
 
-  // reject方法参数是reason
-  function reject(reason) {
-    if (that.status === PENDING) {
-      that.status = REJECTED;
-      that.reason = reason;
+  // reject方法参数是value
+  this.reject = function (value) {
+    if (this.status === PENDING) {
+      this.status = REJECTED;
+      this.value = value;
 
       // resolve里面将所有失败的回调拿出来执行
-      that.onRejectedCallbacks.forEach(callback => {
-        callback(that.reason);
+      this.callbackQueue.forEach(({ onRejected }) => {
+        onRejected(this.value);
       });
     }
-  }
+  };
 
   try {
-    fn(resolve, reject);
+    fn(this.resolve.bind(this), this.reject.bind(this));
   } catch (error) {
-    reject(error);
+    this.reject(error);
   }
 }
 
@@ -51,19 +51,20 @@ function resolvePromise(promise, x, resolve, reject) {
   // 如果 promise 和 x 指向同一对象，以 TypeError 为据因拒绝执行 promise
   // 这是为了防止死循环
   if (promise === x) {
-    return reject(new TypeError('The promise and the return value are the same'));
+    return promise.reject(
+      new TypeError("The promise and the return value are the same"),
+    );
   }
 
-
   // 如果 x 为对象或者函数
-  else if (typeof x === 'object' || typeof x === 'function') {
+  else if (typeof x === "object" || typeof x === "function") {
     // 这个坑是跑测试的时候发现的，如果x是null，应该直接resolve
     if (x === null) {
-      return resolve(x);
+      return promise.resolve(x);
     }
 
     try {
-      // 把 x.then 赋值给 then 
+      // 把 x.then 赋值给 then
       var then = x.then;
     } catch (error) {
       // 如果取 x.then 的值时抛出错误 e ，则以 e 为据因拒绝 promise
@@ -71,7 +72,7 @@ function resolvePromise(promise, x, resolve, reject) {
     }
 
     // 如果 then 是函数
-    if (typeof then === 'function') {
+    if (typeof then === "function") {
       var called = false;
       // 将 x 作为函数的作用域 this 调用之
       // 传递两个回调函数作为参数，第一个参数叫做 resolvePromise ，第二个参数叫做 rejectPromise
@@ -93,7 +94,8 @@ function resolvePromise(promise, x, resolve, reject) {
             if (called) return;
             called = true;
             reject(r);
-          });
+          },
+        );
       } catch (error) {
         // 如果调用 then 方法抛出了异常 e：
         // 如果 resolvePromise 或 rejectPromise 已经被调用，则忽略之
@@ -113,34 +115,16 @@ function resolvePromise(promise, x, resolve, reject) {
 }
 
 MyPromise.prototype.then = function (onFulfilled, onRejected) {
-  // 如果onFulfilled不是函数，给一个默认函数，返回value
-  // 后面返回新promise的时候也做了onFulfilled的参数检查，这里可以删除，暂时保留是为了跟规范一一对应，看得更直观
-  var realOnFulfilled = onFulfilled;
-  if (typeof realOnFulfilled !== 'function') {
-    realOnFulfilled = function (value) {
-      return value;
-    }
-  }
-
-  // 如果onRejected不是函数，给一个默认函数，返回reason的Error
-  // 后面返回新promise的时候也做了onRejected的参数检查，这里可以删除，暂时保留是为了跟规范一一对应，看得更直观
-  var realOnRejected = onRejected;
-  if (typeof realOnRejected !== 'function') {
-    realOnRejected = function (reason) {
-      throw reason;
-    }
-  }
-
-  var that = this;   // 保存一下this
+  var that = this; // 保存一下this
 
   if (this.status === FULFILLED) {
     var promise2 = new MyPromise(function (resolve, reject) {
       setTimeout(function () {
         try {
-          if (typeof onFulfilled !== 'function') {
+          if (typeof onFulfilled !== "function") {
             resolve(that.value);
           } else {
-            var x = realOnFulfilled(that.value);
+            var x = onFulfilled(that.value);
             resolvePromise(promise2, x, resolve, reject);
           }
         } catch (error) {
@@ -156,10 +140,10 @@ MyPromise.prototype.then = function (onFulfilled, onRejected) {
     var promise2 = new MyPromise(function (resolve, reject) {
       setTimeout(function () {
         try {
-          if (typeof onRejected !== 'function') {
-            reject(that.reason);
+          if (typeof onRejected !== "function") {
+            reject(that.value);
           } else {
-            var x = realOnRejected(that.reason);
+            var x = onRejected(that.value);
             resolvePromise(promise2, x, resolve, reject);
           }
         } catch (error) {
@@ -174,40 +158,40 @@ MyPromise.prototype.then = function (onFulfilled, onRejected) {
   // 如果还是PENDING状态，将回调保存下来
   if (this.status === PENDING) {
     var promise2 = new MyPromise(function (resolve, reject) {
-      that.onFulfilledCallbacks.push(function () {
-        setTimeout(function () {
-          try {
-            if (typeof onFulfilled !== 'function') {
-              resolve(that.value);
-            } else {
-              var x = realOnFulfilled(that.value);
-              resolvePromise(promise2, x, resolve, reject);
+      that.callbackQueue.push({
+        onFulfilled: function () {
+          setTimeout(function () {
+            try {
+              if (typeof onFulfilled !== "function") {
+                resolve(that.value);
+              } else {
+                var x = onFulfilled(that.value);
+                resolvePromise(promise2, x, resolve, reject);
+              }
+            } catch (error) {
+              reject(error);
             }
-          } catch (error) {
-            reject(error);
-          }
-        }, 0);
-      });
-      that.onRejectedCallbacks.push(function () {
-        setTimeout(function () {
-          try {
-            if (typeof onRejected !== 'function') {
-              reject(that.reason);
-            } else {
-              var x = realOnRejected(that.reason);
-              resolvePromise(promise2, x, resolve, reject);
+          }, 0);
+        },
+        onRejected: function () {
+          setTimeout(function () {
+            try {
+              if (typeof onRejected !== "function") {
+                reject(that.value);
+              } else {
+                var x = onRejected(that.value);
+                resolvePromise(promise2, x, resolve, reject);
+              }
+            } catch (error) {
+              reject(error);
             }
-          } catch (error) {
-            reject(error);
-          }
-        }, 0)
+          }, 0);
+        },
       });
     });
 
     return promise2;
   }
-}
-
-
+};
 
 module.exports = MyPromise;
