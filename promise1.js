@@ -54,14 +54,7 @@ function resolvePromise(promise, x, resolve, reject) {
     return reject(new TypeError('The promise and the return value are the same'));
   }
 
-  if (x instanceof MyPromise) {
-    // 如果 x 为 Promise ，则使 promise 接受 x 的状态
-    // 也就是继续执行x，如果执行的时候拿到一个y，还要继续解析y
-    // 这个if跟下面判断then然后拿到执行其实重复了，可有可无
-    x.then(function (y) {
-      resolvePromise(promise, y, resolve, reject);
-    }, reject);
-  }
+
   // 如果 x 为对象或者函数
   else if (typeof x === 'object' || typeof x === 'function') {
     // 这个坑是跑测试的时候发现的，如果x是null，应该直接resolve
@@ -215,131 +208,6 @@ MyPromise.prototype.then = function (onFulfilled, onRejected) {
   }
 }
 
-MyPromise.deferred = function () {
-  var result = {};
-  result.promise = new MyPromise(function (resolve, reject) {
-    result.resolve = resolve;
-    result.reject = reject;
-  });
 
-  return result;
-}
-
-MyPromise.resolve = function (parameter) {
-  if (parameter instanceof MyPromise) {
-    return parameter;
-  }
-
-  return new MyPromise(function (resolve) {
-    resolve(parameter);
-  });
-}
-
-MyPromise.reject = function (reason) {
-  return new MyPromise(function (resolve, reject) {
-    reject(reason);
-  });
-}
-
-MyPromise.all = function (promiseList) {
-  var resPromise = new MyPromise(function (resolve, reject) {
-    var count = 0;
-    var result = [];
-    var length = promiseList.length;
-
-    if (length === 0) {
-      return resolve(result);
-    }
-
-    promiseList.forEach(function (promise, index) {
-      MyPromise.resolve(promise).then(function (value) {
-        count++;
-        result[index] = value;
-        if (count === length) {
-          resolve(result);
-        }
-      }, function (reason) {
-        reject(reason);
-      });
-    });
-  });
-
-  return resPromise;
-}
-
-MyPromise.race = function (promiseList) {
-  var resPromise = new MyPromise(function (resolve, reject) {
-    var length = promiseList.length;
-
-    if (length === 0) {
-      return resolve();
-    } else {
-      for (var i = 0; i < length; i++) {
-        MyPromise.resolve(promiseList[i]).then(function (value) {
-          return resolve(value);
-        }, function (reason) {
-          return reject(reason);
-        });
-      }
-    }
-  });
-
-  return resPromise;
-}
-
-MyPromise.prototype.catch = function (onRejected) {
-  this.then(null, onRejected);
-}
-
-MyPromise.prototype.finally = function (fn) {
-  return this.then(function (value) {
-    return MyPromise.resolve(fn()).then(function () {
-      return value;
-    });
-  }, function (error) {
-    return MyPromise.resolve(fn()).then(function () {
-      throw error
-    });
-  });
-}
-
-MyPromise.allSettled = function (promiseList) {
-  return new MyPromise(function (resolve) {
-    var length = promiseList.length;
-    var result = [];
-    var count = 0;
-
-    if (length === 0) {
-      return resolve(result);
-    } else {
-      for (var i = 0; i < length; i++) {
-
-        (function (i) {
-          var currentPromise = MyPromise.resolve(promiseList[i]);
-
-          currentPromise.then(function (value) {
-            count++;
-            result[i] = {
-              status: 'fulfilled',
-              value: value
-            }
-            if (count === length) {
-              return resolve(result);
-            }
-          }, function (reason) {
-            count++;
-            result[i] = {
-              status: 'rejected',
-              reason: reason
-            }
-            if (count === length) {
-              return resolve(result);
-            }
-          });
-        })(i)
-      }
-    }
-  });
-}
 
 module.exports = MyPromise;
