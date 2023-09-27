@@ -1,132 +1,184 @@
 // possible states
-const PENDING = 'PENDING'
-const FULFILLED = 'FULFILLED'
-const REJECTED = 'REJECTED'
+const PENDING = "PENDING";
+const FULFILLED = "FULFILLED";
+const REJECTED = "REJECTED";
 
 class APromise {
   constructor(fn) {
-    this.value = undefined
-    this.state = PENDING
-    this.callBackQueue = []
+    this.state = PENDING;
+    this.callbackQueue = [];
+    this.value = undefined;
     try {
-      fn(this.resolve.bind(this), this.reject.bind(this))
-    }
-    catch (e) {
-      this.reject(e)
-    }
-  }
-  executeQueue() {
-    const len = this.callBackQueue.length
-    for (let i = 0; i < len; i++) {
-      const { onFulfilled, onRejected } = this.callBackQueue[i]
-      this.then(onFulfilled,
-        onRejected)
+      fn(this.resolve.bind(this), this.reject.bind(this));
+    } catch (error) {
+      this.reject(error);
     }
   }
   resolve(value) {
-
-
-    if (this.state === PENDING) {
-      if (value === this) {
-        return this.reject(new TypeError('failed'))
-      }
-      if (value && (typeof value === 'object' || typeof value === 'function')) {
-        let then
-        try {
-          then = value.then
-        } catch (err) {
-          return this.reject(err)
-        }
-
-        // promise
-        if (then === this.then && this instanceof APromise) {
-          this.state = FULFILLED
-          this.value = value
-          return this.executeQueue()
-        }
-
-        // thenable
-        if (typeof then === 'function') {
-          return this.then(then.bind(this))
-        }
-      }
-
-      this.state = FULFILLED
-      this.value = value
-      // 如果 resolve是异步的的，那么cb就需要rsolve出发
-
-      // finale要干的事情，如果队列中有任务要执行
-      this.executeQueue()
-    }
+    this.changePromiseValue(this, FULFILLED, value);
   }
   reject(reason) {
-    if (this.state === PENDING) {
-      this.state = REJECTED
-      this.value = reason
-      this.executeQueue()
+    this.changePromiseValue(this, REJECTED, reason);
+  }
+  changePromiseValue(p, state, value) {
+    if (p.state === PENDING) {
+      p.state = state;
+      p.value = value;
+      this.callbackQueue.forEach((cb) => {
+        const { onFulfilled, onRejected } = cb;
+        if (state === FULFILLED) {
+          onFulfilled(value);
+        } else {
+          onRejected(value);
+        }
+      });
     }
   }
-
 
   then(onFulfilled, onRejected) {
-    const promiseThen = new APromise(() => { })
-    let that = this
-    while (that.value instanceof APromise && that.state !== REJECTED) {
-      that = that.value
-    }
-
-
-    if (that.state === PENDING) {
-      that.callBackQueue.push({
-        onFulfilled,
-        onRejected
-
-      })
-    }
-    if (that.state === FULFILLED) {
-      // 这里就是异步的精髓 为什么不是异步 resovle 二十esolve onfulfilled
-      setTimeout(() => {
-        if (typeof onFulfilled !== 'function') {
-          promiseThen.resolve(that.value)
-        }
-        else {
-          try {
-            const ret = onFulfilled(that.value)
-            promiseThen.resolve(ret)
-          } catch (err) {
-            promiseThen.reject(err)
+    function resolvePromise(p, value) {
+ 
+        if (p === value) {
+            return p.reject(
+              new TypeError("The promise and the return value are the same"),
+            );
+          } else if (typeof value === "object" || typeof value === "function") {
+            if (value === null) {
+              return p.resolve(value);
+            }
+        
+            try {
+              var then = value.then;
+            } catch (error) {
+              return p.reject(error);
+            }
+        
+            if (typeof then === "function") {
+              var called = false;
+              try {
+                then.call(
+                  value,
+                  function (y) {
+                    if (called) return;
+                    called = true;
+                    resolvePromise(p, y);
+                  },
+                  function (r) {
+                    if (called) return;
+                    called = true;
+                    p.reject(r);
+                  },
+                );
+              } catch (error) {
+                if (called) return;
+                p.reject(error);
+              }
+            } else {
+              p.resolve(value);
+            }
+          } else {
+            p.resolve(value);
           }
-        }
-      },0);
     }
-    if (that.state === REJECTED) {
-      setTimeout(() => {
-        if (typeof onRejected !== 'function') {
-          promiseThen.reject(that.value)
-          return
-        }
-        else {
+    var that = this; // 保存一下this
+
+    if (this.status === FULFILLED) {
+      var promise2 = new APromise(function (resolve, reject) {
+        setTimeout(function () {
           try {
-            const ret = onRejected(that.value)
-            promiseThen.resolve(ret)
-          } catch (err) {
-            promiseThen.reject(err)
+            if (typeof onFulfilled !== "function") {
+              resolve(that.value);
+            } else {
+              var x = onFulfilled(that.value);
+              resolvePromise(promise2, x, resolve, reject);
+            }
+          } catch (error) {
+            reject(error);
           }
-        }
-      },0);
+        }, 0);
+      });
+  
+      return promise2;
     }
-    return promiseThen
+  
+    if (this.status === REJECTED) {
+      var promise2 = new APromise(function (resolve, reject) {
+        setTimeout(function () {
+          try {
+            if (typeof onRejected !== "function") {
+              reject(that.value);
+            } else {
+              var x = onRejected(that.value);
+              resolvePromise(promise2, x, resolve, reject);
+            }
+          } catch (error) {
+            reject(error);
+          }
+        }, 0);
+      });
+  
+      return promise2;
+    }
+  
+    // 如果还是PENDING状态，将回调保存下来
+    if (this.status === PENDING) {
+      var promise2 = new APromise(function (resolve, reject) {
+        that.callbackQueue.push({
+          onFulfilled: function () {
+            setTimeout(function () {
+              try {
+                if (typeof onFulfilled !== "function") {
+                  resolve(that.value);
+                } else {
+                  var x = onFulfilled(that.value);
+                  resolvePromise(promise2, x, resolve, reject);
+                }
+              } catch (error) {
+                reject(error);
+              }
+            }, 0);
+          },
+          onRejected: function () {
+            setTimeout(function () {
+              try {
+                if (typeof onRejected !== "function") {
+                  reject(that.value);
+                } else {
+                  var x = onRejected(that.value);
+                  resolvePromise(promise2, x, resolve, reject);
+                }
+              } catch (error) {
+                reject(error);
+              }
+            }, 0);
+          },
+        });
+      });
+  
+      return promise2;
+    }
+    // const returnPromise = new Promise(() => { })
+    // setTimeout(() => {
+    //   if (this.state === PENDING) {
+
+    //   } else {
+    //     if (this.state === FULFILLED) {
+    //       if (typeof onFulfilled !== 'function') {
+    //         returnPromise.resolve(this.value)
+    //       } else {
+    //         try {
+    //           let returnValue = onFulfilled(this.value);
+    //           handlePromise(returnPromise, returnValue)
+    //         } catch (error) {
+    //           returnPromise.reject(error)
+    //         }
+    //       }
+    //     } else {
+
+    //     }
+    //   }
+    // }, 0);
+
   }
 }
-
-
-function callbackAggregator(times, ultimateCallback) {
-  var soFar = 0;
-  return function () {
-      if (++soFar === times) {
-          ultimateCallback();
-      }
-  };
-}
-
-module.exports = APromise
+module.exports = APromise;
