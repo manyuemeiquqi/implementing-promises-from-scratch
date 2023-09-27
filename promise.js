@@ -1,11 +1,11 @@
-// possible states
+// possible statuss
 const PENDING = "PENDING";
 const FULFILLED = "FULFILLED";
 const REJECTED = "REJECTED";
 
 class APromise {
   constructor(fn) {
-    this.state = PENDING;
+    this.status = PENDING;
     this.callbackQueue = [];
     this.value = undefined;
     try {
@@ -20,13 +20,13 @@ class APromise {
   reject(reason) {
     this.changePromiseValue(this, REJECTED, reason);
   }
-  changePromiseValue(p, state, value) {
-    if (p.state === PENDING) {
-      p.state = state;
+  changePromiseValue(p, status, value) {
+    if (p.status === PENDING) {
+      p.status = status;
       p.value = value;
       this.callbackQueue.forEach((cb) => {
         const { onFulfilled, onRejected } = cb;
-        if (state === FULFILLED) {
+        if (status === FULFILLED) {
           onFulfilled(value);
         } else {
           onRejected(value);
@@ -159,10 +159,10 @@ class APromise {
     }
     // const returnPromise = new Promise(() => { })
     // setTimeout(() => {
-    //   if (this.state === PENDING) {
+    //   if (this.status === PENDING) {
 
     //   } else {
-    //     if (this.state === FULFILLED) {
+    //     if (this.status === FULFILLED) {
     //       if (typeof onFulfilled !== 'function') {
     //         returnPromise.resolve(this.value)
     //       } else {
